@@ -32,6 +32,7 @@ import {
   Loader2,
   HelpCircle,
   AlertCircle,
+  GripVertical,
 } from "lucide-react";
 import {
   seed,
@@ -53,6 +54,22 @@ import {
   type Analysis,
   type SaveInput,
 } from "@/lib/domain";
+type PipelineStage = (typeof STAGES)[number];
+type PendingStageMove = { id: number; destination: PipelineStage };
+type DragSource = { id: number; from: PipelineStage };
+type PipelineMoveState = {
+  source: DragSource | null;
+  target: PipelineStage | null;
+};
+const emptyDrag: PipelineMoveState = { source: null, target: null };
+
+// Native HTML Drag and Drop does not need a dependency, and the existing
+// enquiry detail form remains the keyboard/touch alternative.
+export function parsePipelineDragId(raw: string): number | null {
+  const id = Number(raw);
+  return /^\d+$/.test(raw) && Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 type Screen =
   "Dashboard" | "AI Enquiry Processor" | "Enquiry List" | "Pipeline";
 const NAV = [
@@ -164,7 +181,12 @@ export default function CRM() {
     [stage, setStage] = useState("All"),
     [programme, setProgramme] = useState("All"),
     [page, setPage] = useState(0),
-    [pipelineAll, setPipelineAll] = useState(false);
+    [pipelineAll, setPipelineAll] = useState(false),
+    [drag, setDrag] = useState<PipelineMoveState>(emptyDrag),
+    [moveTarget, setMoveTarget] = useState<PendingStageMove | null>(null),
+    [moveConfirmed, setMoveConfirmed] = useState(false),
+    [movingId, setMovingId] = useState<number | null>(null);
+  const moveLock = useRef(false);
   const [dataset, setDataset] = useState("Official dataset");
   const [reviewFilter, setReviewFilter] = useState<"Pending" | "Reviewed">("Pending");
   const rows = allRows.filter(
@@ -222,7 +244,7 @@ export default function CRM() {
     void load();
   }, []);
   useEffect(() => {
-    if (detail === null && !help) return;
+    if (detail === null && !help && moveTarget === null) return;
     const previous = document.activeElement as HTMLElement | null;
     const dialog = document.querySelector(
       "[role=dialog]",
@@ -236,8 +258,11 @@ export default function CRM() {
     controls()[0]?.focus();
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (moveTarget !== null && moveLock.current) return;
         setDetail(null);
         setHelp(false);
+        setMoveTarget(null);
+        setMoveConfirmed(false);
       }
       if (e.key === "Tab") {
         const c = controls(),
@@ -257,7 +282,7 @@ export default function CRM() {
       document.removeEventListener("keydown", handler);
       previous?.focus();
     };
-  }, [detail, help]);
+  }, [detail, help, moveTarget]);
   useEffect(() => {
     setPage(0);
   }, [query, type, stage, programme]);
@@ -378,6 +403,73 @@ export default function CRM() {
       setSelected(remaining[Math.min(Math.max(index, 0), remaining.length - 1)]?.id ?? 0);
     }
     return updated;
+  }
+  function clearDrag() {
+    setDrag(emptyDrag);
+  }
+  async function commitPipelineMove(id: number, destination: PipelineStage, paymentVerified = false) {
+    if (moveLock.current) return;
+    const record = allRows.find((r) => r.id === id);
+    if (!record || record.status === destination) {
+      setMoveTarget(null);
+      return;
+    }
+    moveLock.current = true;
+    setMovingId(id);
+    setError("");
+    try {
+      await saveRecord({
+        id: record.id,
+        version: record.version,
+        changes: { ...editable(record), status: destination },
+        paymentVerified,
+        identityApproved: false,
+        followUp: false,
+      });
+      setNotice(`${shortName(record.name)} moved to ${destination}.`);
+      setMoveTarget(null);
+      setMoveConfirmed(false);
+    } catch (e) {
+      // The card does not leave its original column until the API confirms
+      // success. On failure, the old stage remains displayed.
+      const message = (e as Error).message;
+      setError(`Could not move enquiry #${id}: ${message}`);
+      setMoveTarget(null);
+      if (/record changed|reload/i.test(message) && mode === "database") {
+        try {
+          setRows((await api("/api/crm")).rows);
+        } catch {
+          // Preserve the last known rows and show the original error.
+        }
+      }
+    } finally {
+      moveLock.current = false;
+      setMovingId(null);
+    }
+  }
+  function requestPipelineMove(id: number, destination: PipelineStage) {
+    if (moveLock.current || movingId !== null) return;
+    const record = allRows.find((r) => r.id === id);
+    if (!record || record.status === destination) return;
+    setMoveConfirmed(false);
+    if (destination === "Paid" || destination === "Contacted") {
+      // These stages represent verified real-world actions, never AI guesses.
+      setMoveTarget({ id, destination });
+      return;
+    }
+    void commitPipelineMove(id, destination);
+  }
+  function handleDrop(event: React.DragEvent<HTMLElement>, destination: PipelineStage) {
+    event.preventDefault();
+    const raw = event.dataTransfer.getData("application/x-biai-enquiry") ||
+      event.dataTransfer.getData("text/plain");
+    const id = parsePipelineDragId(raw);
+    const source = drag.source;
+    clearDrag();
+    // Reject an arbitrary non-card drop. The source must belong to this board.
+    if (id !== null && source?.id === id && source.from !== destination) {
+      requestPipelineMove(id, destination);
+    }
   }
   function exportCSV() {
     const url = URL.createObjectURL(
@@ -999,16 +1091,16 @@ export default function CRM() {
                   <div className="pipeline-toolbar">
                     <div className="segmented">
                       <button
-                        className={!pipelineAll ? "active" : ""}
-                        onClick={() => setPipelineAll(false)}
-                      >
-                        Sales only <span>{sales.length}</span>
-                      </button>
-                      <button
                         className={pipelineAll ? "active" : ""}
                         onClick={() => setPipelineAll(true)}
                       >
                         All enquiries <span>{rows.length}</span>
+                      </button>
+                      <button
+                        className={!pipelineAll ? "active" : ""}
+                        onClick={() => setPipelineAll(false)}
+                      >
+                        Sales only <span>{sales.length}</span>
                       </button>
                     </div>
                     <label className="search">
@@ -1059,7 +1151,19 @@ export default function CRM() {
                       return (
                         <section
                           key={s}
-                          className={"board-column " + stageClass(s)}
+                          className={"board-column " + stageClass(s) + (drag.target === s ? " drag-over" : "")}
+                          onDragOver={(event) => {
+                            if (drag.source && movingId === null) {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = "move";
+                              if (drag.target !== s) setDrag((current) => ({ ...current, target: s }));
+                            }
+                          }}
+                          onDragLeave={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget as Node))
+                              setDrag((current) => ({ ...current, target: null }));
+                          }}
+                          onDrop={(event) => handleDrop(event, s)}
                         >
                           <div className="column-heading">
                             <span>
@@ -1072,13 +1176,26 @@ export default function CRM() {
                           <div className="column-cards">
                             {cards.map((r) => (
                               <button
-                                className="deal-card"
+                                className={"deal-card draggable-card" + (drag.source?.id === r.id ? " dragging" : "") + (movingId === r.id ? " is-saving" : "")}
                                 key={r.id}
-                                onClick={() => setDetail(r.id)}
+                                draggable={movingId === null && mode !== "loading"}
+                                title="Drag to a different stage, or click to open the enquiry and use its stage dropdown"
+                                onDragStart={(event) => {
+                                  if (movingId !== null) { event.preventDefault(); return; }
+                                  event.dataTransfer.effectAllowed = "move";
+                                  event.dataTransfer.setData("application/x-biai-enquiry", String(r.id));
+                                  event.dataTransfer.setData("text/plain", String(r.id));
+                                  setDrag({ source: { id: r.id, from: s }, target: null });
+                                }}
+                                onDragEnd={clearDrag}
+                                onClick={() => { if (movingId === null && !drag.source) setDetail(r.id); }}
                               >
                                 <div className="deal-top">
                                   <span>{r.programme}</span>
-                                  <ArrowUpRight size={14} />
+                                  <span className="deal-top-actions">
+                                    <GripVertical size={15} aria-hidden="true" />
+                                    <ArrowUpRight size={14} aria-hidden="true" />
+                                  </span>
                                 </div>
                                 {r.analysis?.recommended_pipeline_stage && (
                                   <span className="ai-pipeline-label">
@@ -1129,8 +1246,8 @@ export default function CRM() {
                   </div>
                   <p className="board-note">
                     <ShieldCheck size={14} />
-                    Open a card to change its stage. Paid requires independent
-                    payment verification.
+                    Drag a card to a different column, or open it to change its stage with the dropdown.
+                    Contacted requires a confirmed staff interaction; Paid requires independently verified payment.
                   </p>
                 </>
               )}
@@ -1143,6 +1260,40 @@ export default function CRM() {
           <span>Round 2 · Demo</span>
         </footer>
       </main>
+      {moveTarget && (() => {
+        const record = allRows.find((r) => r.id === moveTarget.id);
+        if (!record) return null;
+        const isPayment = moveTarget.destination === "Paid";
+        return (
+          <div className="stage-move-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !moveLock.current) setMoveTarget(null); }}>
+            <section className="stage-move-dialog" role="dialog" aria-modal="true" aria-label="Confirm pipeline stage change">
+              <div className="stage-move-header">
+                <ShieldCheck size={21} />
+                <h2>Confirm move to {moveTarget.destination}</h2>
+              </div>
+              <p>
+                {isPayment
+                  ? "Only mark this enquiry Paid after independently verifying the payment. A customer's message alone is not proof."
+                  : "Only mark this enquiry Contacted if a staff member has actually contacted the customer."}
+              </p>
+              <div className="stage-move-person"><strong>{shortName(record.name)}</strong><span>#{String(record.id).padStart(2,"0")}</span></div>
+              <label className="stage-move-verify">
+                <input type="checkbox" checked={moveConfirmed} disabled={movingId !== null}
+                  onChange={(e) => setMoveConfirmed(e.target.checked)} />
+                <span>{isPayment ? "I independently verified this customer's payment." : "I confirm staff actually contacted this customer."}</span>
+              </label>
+              <div className="stage-move-actions">
+                <button className="button" disabled={movingId !== null} onClick={() => { setMoveTarget(null); setMoveConfirmed(false); }}>Cancel</button>
+                <button className="primary" disabled={!moveConfirmed || movingId !== null}
+                  onClick={() => void commitPipelineMove(record.id, moveTarget.destination, isPayment && moveConfirmed)}>
+                  {movingId !== null ? <Loader2 className="spin" size={15}/> : <Check size={15}/>}
+                  {movingId !== null ? "Saving…" : "Confirm & save"}
+                </button>
+              </div>
+            </section>
+          </div>
+        );
+      })()}
       {notice && (
         <div className="toast" role="status">
           <CheckCircle2 size={18} />

@@ -645,3 +645,77 @@ test("empty Pending and Reviewed groups show useful messages and disable selecti
   assert.ok(screen.getByText("No reviewed enquiries yet."));
   assert.equal((screen.getByLabelText("Choose enquiry") as HTMLSelectElement).disabled, true);
 });
+
+function dragData() {
+  const stored = new Map<string, string>();
+  return {
+    effectAllowed: "move",
+    dropEffect: "move",
+    setData(type: string, value: string) { stored.set(type, value); },
+    getData(type: string) { return stored.get(type) || ""; },
+  };
+}
+function dropCard(card: HTMLElement, destination: string) {
+  const dataTransfer = dragData();
+  const column = screen.getByText(destination, { selector: ".column-heading span" }).closest(".board-column");
+  assert.ok(column, `Missing ${destination} column`);
+  fireEvent.dragStart(card, { dataTransfer });
+  fireEvent.dragOver(column, { dataTransfer });
+  fireEvent.drop(column, { dataTransfer });
+  fireEvent.dragEnd(card, { dataTransfer });
+}
+
+test("pipeline filter buttons are ordered All enquiries then Sales only", async () => {
+  demo();
+  await ready();
+  await click("Pipeline");
+  const group = screen.getByRole("button", { name: /All enquiries/ }).parentElement!;
+  assert.match(group.children[0].textContent || "", /All enquiries/);
+  assert.match(group.children[1].textContent || "", /Sales only/);
+});
+
+test("dragging New to Interested saves the stage and preserves the source enquiry", async () => {
+  demo();
+  await ready();
+  await click("Pipeline");
+  await click(/All enquiries/);
+  const card = screen.getAllByRole("button", { name: /Unclassified Rafi Ahmed/ })[0];
+  dropCard(card, "Interested");
+  await waitFor(() => assert.equal(JSON.parse(localStorage.getItem(STORE)!)[0].status, "Interested"));
+  assert.equal(JSON.parse(localStorage.getItem(STORE)!)[0].message, seed()[0].message);
+  assert.equal(JSON.parse(localStorage.getItem(STORE)!)[0].origin, "Official Dataset");
+});
+
+test("dragging into Contacted needs explicit confirmation and supports cancel", async () => {
+  demo();
+  await ready();
+  await click("Pipeline");
+  await click(/All enquiries/);
+  const card = screen.getAllByRole("button", { name: /Unclassified Rafi Ahmed/ })[0];
+  dropCard(card, "Contacted");
+  const confirm = screen.getByRole("button", { name: "Confirm & save" }) as HTMLButtonElement;
+  assert.equal(confirm.disabled, true);
+  await click("Cancel");
+  assert.equal(localStorage.getItem(STORE), null);
+  dropCard(card, "Contacted");
+  fireEvent.click(screen.getByLabelText("I confirm staff actually contacted this customer."));
+  await click("Confirm & save");
+  await waitFor(() => assert.equal(JSON.parse(localStorage.getItem(STORE)!)[0].status, "Contacted"));
+});
+
+test("dragging into Paid requires independent verification, cancelling does not move", async () => {
+  demo();
+  await ready();
+  await click("Pipeline");
+  await click(/All enquiries/);
+  const card = screen.getAllByRole("button", { name: /Unclassified Rafi Ahmed/ })[0];
+  dropCard(card, "Paid");
+  const confirm = screen.getByRole("button", { name: "Confirm & save" }) as HTMLButtonElement;
+  assert.equal(confirm.disabled, true);
+  await click("Cancel");
+  assert.equal(localStorage.getItem(STORE), null);
+  dropCard(card, "Paid");
+  fireEvent.click(screen.getByLabelText("I independently verified this customer's payment."));
+  await click("Confirm & save");
+  await waitFor(() => assert.equal(JSON.parse(localStorage.getItem(STORE)!)[0].status, "Paid"));
+});
