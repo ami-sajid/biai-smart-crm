@@ -185,8 +185,14 @@ export default function CRM() {
     [drag, setDrag] = useState<PipelineMoveState>(emptyDrag),
     [moveTarget, setMoveTarget] = useState<PendingStageMove | null>(null),
     [moveConfirmed, setMoveConfirmed] = useState(false),
-    [movingId, setMovingId] = useState<number | null>(null);
+    [movingId, setMovingId] = useState<number | null>(null),
+    [recentMove, setRecentMove] = useState<number | null>(null);
   const moveLock = useRef(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+  }, []);
+  const dragTargetRef = useRef<PipelineStage | null>(null);
   const [dataset, setDataset] = useState("Official dataset");
   const [reviewFilter, setReviewFilter] = useState<"Pending" | "Reviewed">("Pending");
   const rows = allRows.filter(
@@ -405,7 +411,14 @@ export default function CRM() {
     return updated;
   }
   function clearDrag() {
+    dragTargetRef.current = null;
     setDrag(emptyDrag);
+  }
+  function setDragTarget(stage: PipelineStage | null) {
+    // Drag-over fires many times per second. Only re-render when the column changes.
+    if (dragTargetRef.current === stage) return;
+    dragTargetRef.current = stage;
+    setDrag((current) => current.source ? { ...current, target: stage } : current);
   }
   async function commitPipelineMove(id: number, destination: PipelineStage, paymentVerified = false) {
     if (moveLock.current) return;
@@ -426,6 +439,10 @@ export default function CRM() {
         identityApproved: false,
         followUp: false,
       });
+      // Mark the card only after the authenticated save succeeds.
+      setRecentMove(id);
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      settleTimer.current = setTimeout(() => setRecentMove(null), 280);
       setNotice(`${shortName(record.name)} moved to ${destination}.`);
       setMoveTarget(null);
       setMoveConfirmed(false);
@@ -609,7 +626,7 @@ export default function CRM() {
               </button>
             </div>
           )}
-          <div className="page-heading">
+          <div className="page-heading" key={screen}>
             <div>
               <div className="eyebrow">BIAI SMART CRM</div>
               <h1>
@@ -714,7 +731,7 @@ export default function CRM() {
             </form>
           )}
           {!!rows.length && (
-            <>
+            <div className="screen-motion" key={screen}>
               {screen === "Dashboard" && (
                 <>
                   <div className="stats">
@@ -1156,12 +1173,18 @@ export default function CRM() {
                             if (drag.source && movingId === null) {
                               event.preventDefault();
                               event.dataTransfer.dropEffect = "move";
-                              if (drag.target !== s) setDrag((current) => ({ ...current, target: s }));
+                              setDragTarget(s);
                             }
                           }}
                           onDragLeave={(event) => {
-                            if (!event.currentTarget.contains(event.relatedTarget as Node))
-                              setDrag((current) => ({ ...current, target: null }));
+                            // Native dragleave can fire with a null relatedTarget when
+                            // crossing card children. Check pointer bounds to avoid flicker.
+                            const bounds = event.currentTarget.getBoundingClientRect();
+                            const inside = event.clientX >= bounds.left &&
+                              event.clientX <= bounds.right &&
+                              event.clientY >= bounds.top &&
+                              event.clientY <= bounds.bottom;
+                            if (!inside && dragTargetRef.current === s) setDragTarget(null);
                           }}
                           onDrop={(event) => handleDrop(event, s)}
                         >
@@ -1176,15 +1199,17 @@ export default function CRM() {
                           <div className="column-cards">
                             {cards.map((r) => (
                               <button
-                                className={"deal-card draggable-card" + (drag.source?.id === r.id ? " dragging" : "") + (movingId === r.id ? " is-saving" : "")}
+                                className={"deal-card draggable-card" + (drag.source?.id === r.id ? " dragging" : "") + (movingId === r.id ? " is-saving" : "") + (recentMove === r.id ? " just-moved" : "")}
                                 key={r.id}
                                 draggable={movingId === null && mode !== "loading"}
                                 title="Drag to a different stage, or click to open the enquiry and use its stage dropdown"
+                                aria-busy={movingId === r.id}
                                 onDragStart={(event) => {
                                   if (movingId !== null) { event.preventDefault(); return; }
                                   event.dataTransfer.effectAllowed = "move";
                                   event.dataTransfer.setData("application/x-biai-enquiry", String(r.id));
                                   event.dataTransfer.setData("text/plain", String(r.id));
+                                  dragTargetRef.current = null;
                                   setDrag({ source: { id: r.id, from: s }, target: null });
                                 }}
                                 onDragEnd={clearDrag}
@@ -1251,7 +1276,7 @@ export default function CRM() {
                   </p>
                 </>
               )}
-            </>
+            </div>
           )}
         </div>
         <footer className="footer">

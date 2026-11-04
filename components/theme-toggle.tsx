@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sun, Moon } from "lucide-react";
 export default function ThemeToggle() {
   const [dark, setDark] = useState(false);
+  const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
     const sync = (event: StorageEvent) => {
@@ -12,7 +13,11 @@ export default function ThemeToggle() {
       setDark(value);
     };
     window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      if (transitionTimer.current) clearTimeout(transitionTimer.current);
+      document.documentElement.classList.remove("theme-transitioning");
+    };
   }, []);
   return (
     <button
@@ -23,6 +28,17 @@ export default function ThemeToggle() {
       aria-label="Dark mode"
       onClick={() => {
         const next = !dark;
+        if (transitionTimer.current) clearTimeout(transitionTimer.current);
+        document.documentElement.classList.remove("theme-transitioning");
+        const reducedMotion = typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (!reducedMotion) {
+          document.documentElement.classList.add("theme-transitioning");
+          transitionTimer.current = setTimeout(() => {
+            document.documentElement.classList.remove("theme-transitioning");
+            transitionTimer.current = null;
+          }, 240);
+        }
         document.documentElement.dataset.theme = next ? "dark" : "light";
         setDark(next);
         try {

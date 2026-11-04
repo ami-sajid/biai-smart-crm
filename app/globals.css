@@ -2521,3 +2521,179 @@ th {
 @media (prefers-reduced-motion: reduce) {
   .deal-card.draggable-card, .board-column.drag-over { transition: none; }
 }
+
+/* Motion polish: lightweight, consistent timings; no change to layout or color palette. */
+:root {
+  --motion-quick: 140ms;
+  --motion-normal: 190ms;
+  --motion-ease: cubic-bezier(.2,.75,.25,1);
+}
+
+/* Main screens animate on navigation only (the keyed wrapper is not
+   remounted by ordinary field edits or live database refreshes). */
+.screen-motion {
+  animation: biai-screen-enter 185ms var(--motion-ease) both;
+}
+.page-heading {
+  animation: biai-screen-enter 175ms var(--motion-ease) both;
+}
+@keyframes biai-screen-enter {
+  from { opacity: .86; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Sidebar and controls: fade color/shadow changes, not dimensions. */
+nav button,
+.theme-toggle,
+.help-button,
+.segmented button,
+.icon-button,
+.text-button,
+.primary,
+.button {
+  transition: background-color var(--motion-normal) ease,
+              color var(--motion-normal) ease,
+              border-color var(--motion-normal) ease,
+              box-shadow var(--motion-normal) ease,
+              opacity var(--motion-quick) ease;
+}
+nav button:hover:not(.active):not(:disabled) {
+  color: var(--text-purple, #7255d6);
+}
+.primary:not(:disabled):active,
+.button:not(:disabled):active {
+  transform: translateY(1px);
+}
+.primary,
+.button {
+  transition: background-color var(--motion-normal) ease,
+              color var(--motion-normal) ease,
+              border-color var(--motion-normal) ease,
+              box-shadow var(--motion-normal) ease,
+              transform var(--motion-quick) ease;
+}
+input,
+select,
+textarea {
+  transition: border-color var(--motion-normal) ease,
+              box-shadow var(--motion-normal) ease,
+              background-color var(--motion-normal) ease;
+}
+.theme-track,
+.theme-track > span {
+  transition: background-color var(--motion-normal) ease,
+              transform var(--motion-normal) var(--motion-ease);
+}
+
+/* KPI cards are informational, so only a modest border/shadow response. */
+.stat {
+  transition: border-color var(--motion-normal) ease,
+              box-shadow var(--motion-normal) ease;
+}
+@media (hover: hover) {
+  .stat:hover {
+    border-color: color-mix(in srgb, var(--primary) 17%, var(--border, #e7e9f0));
+    box-shadow: 0 7px 22px #25213d0b;
+  }
+}
+
+/* Native drag/drop: no layout-affecting animation while hovering or saving. */
+.board-column {
+  transition: box-shadow 180ms var(--motion-ease),
+              outline-color 180ms ease,
+              background-color 180ms ease;
+}
+.board-column.drag-over {
+  outline-color: var(--primary, #7258d8);
+  box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--primary, #7258d8) 15%, transparent);
+}
+.deal-card.draggable-card {
+  transition: box-shadow 175ms var(--motion-ease),
+              transform 175ms var(--motion-ease),
+              opacity 140ms ease,
+              border-color 175ms ease;
+}
+@media (hover: hover) {
+  .deal-card.draggable-card:not(.dragging):not(.is-saving):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 9px 20px #17142b20;
+  }
+}
+.deal-card.draggable-card.dragging {
+  opacity: .55;
+  transform: scale(.985);
+  box-shadow: 0 12px 30px #17142b2a;
+}
+.deal-card.draggable-card.is-saving {
+  opacity: .65;
+  pointer-events: none;
+  transform: none;
+}
+
+/* Simple entry motion for dialogs, drawers and notifications. */
+.drawer-backdrop, .stage-move-backdrop {
+  animation: biai-overlay-enter 170ms ease-out both;
+}
+.stage-move-dialog, .help-modal {
+  animation: biai-dialog-enter 195ms var(--motion-ease) both;
+}
+.drawer {
+  animation: biai-drawer-enter 210ms var(--motion-ease) both;
+}
+.toast, .ai-complete, .alert {
+  animation: biai-toast-enter 185ms var(--motion-ease) both;
+}
+@keyframes biai-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes biai-dialog-enter {
+  from { opacity: .35; transform: translateY(7px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes biai-drawer-enter {
+  from { opacity: .65; transform: translateX(13px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes biai-toast-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Toast is horizontally centered using translateX(-50%) — preserve it. */
+.toast { animation-name: biai-toast-centered-enter; }
+@keyframes biai-toast-centered-enter {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Apply theme fades only after a user click: never on first paint. */
+:root.theme-transitioning :is(body, .sidebar, .topbar, .panel, .stat,
+  .deal-card, .board-column, .drawer, .stage-move-dialog, .primary,
+  .button, .theme-toggle, input, textarea, select) {
+  transition-property: background-color, color, border-color, box-shadow;
+  transition-duration: 210ms;
+  transition-timing-function: ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-motion, .page-heading, .drawer-backdrop, .stage-move-backdrop,
+  .stage-move-dialog, .help-modal, .drawer, .toast, .ai-complete, .alert {
+    animation: none !important;
+  }
+  :root.theme-transitioning :is(body, .sidebar, .topbar, .panel, .stat,
+    .deal-card, .board-column, .drawer, .stage-move-dialog, .primary,
+    .button, .theme-toggle, input, textarea, select) {
+    transition: none !important;
+  }
+}
+
+.deal-card.draggable-card.just-moved:not(.dragging) {
+  animation: biai-card-land 220ms var(--motion-ease) both;
+}
+@keyframes biai-card-land {
+  from { opacity: .74; transform: translateY(5px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .deal-card.draggable-card.just-moved:not(.dragging) { animation: none !important; }
+}
