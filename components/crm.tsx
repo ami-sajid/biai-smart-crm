@@ -626,7 +626,7 @@ export default function CRM() {
               </button>
             </div>
           )}
-          <div className="page-heading" key={screen}>
+          <div className="page-heading">
             <div>
               <div className="eyebrow">BIAI SMART CRM</div>
               <h1>
@@ -731,7 +731,7 @@ export default function CRM() {
             </form>
           )}
           {!!rows.length && (
-            <div className="screen-motion" key={screen}>
+            <div className="screen-motion">
               {screen === "Dashboard" && (
                 <>
                   <div className="stats">

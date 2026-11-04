@@ -61,6 +61,26 @@ test("navigation renders all four screens and original message", async () => {
     2,
   );
 });
+test("sidebar navigation keeps exactly one active page heading after rapid tab changes", async () => {
+  demo();
+  await ready();
+  const headings = [
+    "Dashboard",
+    "AI Enquiry Processor",
+    "Enquiry List",
+    "Pipeline",
+    "Dashboard",
+    "AI Enquiry Processor",
+    "Dashboard",
+  ];
+  for (const heading of headings) {
+    await click(heading);
+    const visibleHeadings = document.querySelectorAll(".page-heading h1");
+    assert.equal(visibleHeadings.length, 1, "only one page heading should exist");
+    assert.equal(visibleHeadings[0]?.textContent, heading === "Pipeline" ? "Sales pipeline" : heading);
+    assert.equal(document.querySelectorAll(".screen-motion").length, 1, "only one main screen should exist");
+  }
+});
 test("search finds repeated contact and filters to no matches", async () => {
   demo();
   await ready();

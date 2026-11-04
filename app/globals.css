@@ -2529,17 +2529,11 @@ th {
   --motion-ease: cubic-bezier(.2,.75,.25,1);
 }
 
-/* Main screens animate on navigation only (the keyed wrapper is not
-   remounted by ordinary field edits or live database refreshes). */
-.screen-motion {
-  animation: biai-screen-enter 185ms var(--motion-ease) both;
-}
-.page-heading {
-  animation: biai-screen-enter 175ms var(--motion-ease) both;
-}
-@keyframes biai-screen-enter {
-  from { opacity: .86; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Keep page headers and entire views stationary on tab changes.
+   Animating keyed page wrappers created visual ghost/stacking artifacts during
+   rapid navigation on some browsers. Smaller interactive elements still animate. */
+.screen-motion, .page-heading {
+  animation: none;
 }
 
 /* Sidebar and controls: fade color/shadow changes, not dimensions. */
