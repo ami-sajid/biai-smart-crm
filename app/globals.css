@@ -758,14 +758,32 @@ h1 {
 .processor-toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
   margin-bottom: 17px;
 }
 .processor-select {
   display: flex;
-  align-items: center;
-  gap: 15px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  min-width: 0;
+}
+.processor-selector-field {
+  display: flex;
+  flex-direction: column;
   position: relative;
+  gap: 7px;
+  min-width: 140px;
+}
+.processor-selector-field > span {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary, var(--muted));
+}
+.processor-enquiry-field {
+  min-width: 220px;
 }
 .tiny-label {
   font-size: 8px;
@@ -773,19 +791,34 @@ h1 {
   font-weight: 700;
   color: var(--text-secondary, #a3a7b2);
 }
-.processor-select select {
-  width: 260px;
+.processor-selector-field select {
+  width: 100%;
   font-size: 11px;
   font-weight: 500;
   padding: 10px 32px 10px 13px;
-  border-color: var(--border, #e3e5ef);
+  border: 1px solid var(--border, #e3e5ef);
+  border-radius: 8px;
   background: var(--surface, white);
+  color: var(--ink);
+  appearance: none;
 }
-.processor-select > svg {
+.processor-selector-field > svg {
   position: absolute;
   right: 12px;
+  bottom: 11px;
   color: var(--text-secondary, #8c92a2);
   pointer-events: none;
+}
+.processor-selector-field select:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+.processor-selector-field select:focus-visible {
+  outline: 3px solid #b9a5f2;
+  outline-offset: 2px;
+}
+.processor-empty {
+  padding: 50px 25px;
 }
 .processor-counter {
   display: flex;
@@ -1967,9 +2000,16 @@ tr:hover td {
   .processor-select {
     flex: 1;
     min-width: 0;
+    align-items: stretch;
   }
-  .processor-select select {
-    width: 100%;
+  .processor-selector-field {
+    flex: 1 1 145px;
+  }
+  .processor-enquiry-field {
+    flex: 2 1 210px;
+    min-width: min(210px, 100%);
+  }
+  .processor-selector-field select {
     font-size: 10px;
   }
   .processor-counter span {

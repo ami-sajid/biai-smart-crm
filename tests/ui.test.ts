@@ -277,6 +277,14 @@ test("new enquiry is independent, keeps missing identity blank, saves once and a
     "New enquiry saved · Manual Entry. Official dataset preserved.",
   );
   assert.equal(posts, 1);
+  assert.equal(
+    (screen.getByLabelText("Filter enquiries by review status") as HTMLSelectElement).value,
+    "Pending",
+  );
+  assert.equal(
+    (screen.getByLabelText("Choose enquiry") as HTMLSelectElement).value,
+    String((await list(p))[20].id),
+  );
   assert.deepEqual((await list(p)).slice(0, 20), seed());
   assert.equal((await list(p))[20].channel, "Website");
   await click("Dashboard");
@@ -538,4 +546,102 @@ test("Dashboard inbox shows an empty state when all entries are reviewed", async
   assert.equal(container.querySelectorAll(".inbox-row").length, 0);
   assert.ok(screen.getByText("No pending enquiries. You’re all caught up."));
   assert.equal(JSON.parse(localStorage.getItem(STORE)!).length, 20);
+});
+
+test("processor defaults to Pending and two selectors keep review groups separate", async () => {
+  const saved = seed().map((row) =>
+    row.id === 2 || row.id === 4
+      ? { ...row, needs_human_review: false }
+      : row,
+  );
+  localStorage.setItem(STORE, JSON.stringify(saved));
+  demo();
+  await ready();
+  await click("AI Enquiry Processor");
+  const reviewSelect = screen.getByLabelText("Filter enquiries by review status") as HTMLSelectElement;
+  const enquirySelect = screen.getByLabelText("Choose enquiry") as HTMLSelectElement;
+  assert.equal(reviewSelect.value, "Pending");
+  assert.equal(enquirySelect.options.length, 18);
+  assert.ok(!Array.from(enquirySelect.options).some((o) => o.value === "2" || o.value === "4"));
+  fireEvent.change(reviewSelect, { target: { value: "Reviewed" } });
+  assert.equal(enquirySelect.options.length, 2);
+  assert.equal(enquirySelect.value, "2");
+  assert.deepEqual(Array.from(enquirySelect.options).map((o) => o.value), ["2", "4"]);
+  await click("Next enquiry");
+  assert.equal(enquirySelect.value, "4");
+  assert.equal((screen.getByRole("button", { name: "Next enquiry" }) as HTMLButtonElement).disabled, true);
+  await click("Previous enquiry");
+  assert.equal(enquirySelect.value, "2");
+  fireEvent.change(reviewSelect, { target: { value: "Pending" } });
+  assert.equal(enquirySelect.value, "1");
+  assert.ok(!Array.from(enquirySelect.options).some((o) => o.value === "2"));
+});
+
+test("saving Pending as Reviewed moves it out immediately and preserves analysis", async () => {
+  demo();
+  await ready();
+  await click("AI Enquiry Processor");
+  const picker = screen.getByLabelText("Choose enquiry") as HTMLSelectElement;
+  assert.equal(picker.value, "1");
+  fireEvent.click(screen.getByLabelText("Flag for human review"));
+  await click("Save reviewed enquiry");
+  await screen.findByText("Changes saved.");
+  await waitFor(() => assert.equal(picker.value, "2"));
+  assert.ok(!Array.from(picker.options).some((o) => o.value === "1"));
+  assert.equal(JSON.parse(localStorage.getItem(STORE)!)[0].needs_human_review, false);
+  fireEvent.change(screen.getByLabelText("Filter enquiries by review status"), {
+    target: { value: "Reviewed" },
+  });
+  assert.equal((screen.getByLabelText("Choose enquiry") as HTMLSelectElement).value, "1");
+  assert.ok(screen.getByText(seed()[0].message));
+});
+
+test("reopening Reviewed as Pending in Enquiry List restores it to the processor", async () => {
+  const saved = seed().map((row) =>
+    row.id === 1 ? { ...row, needs_human_review: false } : row,
+  );
+  localStorage.setItem(STORE, JSON.stringify(saved));
+  demo();
+  await ready();
+  await click("AI Enquiry Processor");
+  assert.equal((screen.getByLabelText("Choose enquiry") as HTMLSelectElement).value, "2");
+  await click("Enquiry List");
+  fireEvent.click(screen.getAllByRole("button", { name: "Rafi Ahmed" })[0]);
+  fireEvent.change(screen.getByLabelText("Review status"), {
+    target: { value: "Pending" },
+  });
+  await click("Save changes");
+  await screen.findByText("Changes saved.");
+  await click("Close detail panel");
+  await click("AI Enquiry Processor");
+  const picker = screen.getByLabelText("Choose enquiry") as HTMLSelectElement;
+  assert.equal(picker.value, "1");
+  assert.equal(picker.options.length, 20);
+});
+
+test("empty Pending and Reviewed groups show useful messages and disable selection", async () => {
+  localStorage.setItem(
+    STORE,
+    JSON.stringify(seed().map((row) => ({ ...row, needs_human_review: false }))),
+  );
+  demo();
+  await ready();
+  await click("AI Enquiry Processor");
+  assert.ok(screen.getByText("All caught up! There are no pending enquiries to review."));
+  assert.equal((screen.getByLabelText("Choose enquiry") as HTMLSelectElement).disabled, true);
+  assert.equal((screen.getByRole("button", { name: "Previous enquiry" }) as HTMLButtonElement).disabled, true);
+  fireEvent.change(screen.getByLabelText("Filter enquiries by review status"), {
+    target: { value: "Reviewed" },
+  });
+  assert.equal((screen.getByLabelText("Choose enquiry") as HTMLSelectElement).options.length, 20);
+  cleanup();
+  localStorage.removeItem(STORE);
+  demo();
+  await ready();
+  await click("AI Enquiry Processor");
+  fireEvent.change(screen.getByLabelText("Filter enquiries by review status"), {
+    target: { value: "Reviewed" },
+  });
+  assert.ok(screen.getByText("No reviewed enquiries yet."));
+  assert.equal((screen.getByLabelText("Choose enquiry") as HTMLSelectElement).disabled, true);
 });

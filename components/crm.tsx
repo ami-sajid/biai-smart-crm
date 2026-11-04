@@ -166,6 +166,7 @@ export default function CRM() {
     [page, setPage] = useState(0),
     [pipelineAll, setPipelineAll] = useState(false);
   const [dataset, setDataset] = useState("Official dataset");
+  const [reviewFilter, setReviewFilter] = useState<"Pending" | "Reviewed">("Pending");
   const rows = allRows.filter(
     (r) =>
       dataset === "All enquiries" ||
@@ -173,6 +174,11 @@ export default function CRM() {
         ? r.origin === "Manual Entry"
         : r.origin !== "Manual Entry"),
   );
+  const processorRows = rows.filter(
+    (r) => r.needs_human_review === (reviewFilter === "Pending"),
+  );
+  const processorActive =
+    processorRows.find((r) => r.id === selected) || processorRows[0];
   async function load() {
     setError("");
     try {
@@ -256,6 +262,21 @@ export default function CRM() {
     setPage(0);
   }, [query, type, stage, programme]);
   useEffect(() => {
+    if (screen !== "AI Enquiry Processor" || creating) return;
+    const visible = allRows.filter(
+      (r) =>
+        (dataset === "All enquiries" ||
+          (dataset === "Manual entries"
+            ? r.origin === "Manual Entry"
+            : r.origin !== "Manual Entry")) &&
+        r.needs_human_review === (reviewFilter === "Pending"),
+    );
+    if (!visible.some((r) => r.id === selected)) {
+      const first = visible[0]?.id ?? 0;
+      if (selected !== first) setSelected(first);
+    }
+  }, [allRows, dataset, reviewFilter, selected, screen, creating]);
+  useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 6000);
     return () => clearTimeout(t);
@@ -308,6 +329,7 @@ export default function CRM() {
       previous.some((r) => r.id === row.id) ? previous : [...previous, row],
     );
     setDataset("All enquiries");
+    setReviewFilter(row.needs_human_review ? "Pending" : "Reviewed");
     setSelected(row.id);
     setCreating(false);
     setPipelineAll(true);
@@ -318,10 +340,13 @@ export default function CRM() {
     sales = rows.filter((r) => r.enquiry_type === "Sales"),
     review = rows.filter((r) => r.needs_human_review),
     paid = sales.filter((r) => r.status === "Paid");
-  const active = rows.find((r) => r.id === selected) || rows[0],
-    detailRow = rows.find((r) => r.id === detail);
+  const detailRow = rows.find((r) => r.id === detail);
   function navigate(s: Screen) {
     setCreating(false);
+    if (s === "AI Enquiry Processor") {
+      setReviewFilter("Pending");
+      setSelected(rows.find((r) => r.needs_human_review)?.id ?? 0);
+    }
     setScreen(s);
     setQuery("");
     setType("All");
@@ -331,9 +356,28 @@ export default function CRM() {
   }
   function openAI(id: number) {
     setCreating(false);
+    const enquiry = rows.find((r) => r.id === id);
+    if (enquiry) {
+      setReviewFilter(enquiry.needs_human_review ? "Pending" : "Reviewed");
+    }
     setSelected(id);
     setScreen("AI Enquiry Processor");
     setDetail(null);
+  }
+  function chooseReviewFilter(value: "Pending" | "Reviewed") {
+    setReviewFilter(value);
+    setSelected(
+      rows.find((r) => r.needs_human_review === (value === "Pending"))?.id ?? 0,
+    );
+  }
+  async function saveFromProcessor(input: SaveInput) {
+    const index = processorRows.findIndex((r) => r.id === input.id);
+    const updated = await saveRecord(input);
+    if (updated.needs_human_review !== (reviewFilter === "Pending")) {
+      const remaining = processorRows.filter((r) => r.id !== input.id);
+      setSelected(remaining[Math.min(Math.max(index, 0), remaining.length - 1)]?.id ?? 0);
+    }
+    return updated;
   }
   function exportCSV() {
     const url = URL.createObjectURL(
@@ -719,16 +763,39 @@ export default function CRM() {
                   onCancel={() => setCreating(false)}
                 />
               )}
-              {screen === "AI Enquiry Processor" && !creating && active && (
-                <Processor
-                  key={`${active.id}:${active.version}`}
-                  record={active}
-                  rows={rows}
-                  onSelect={setSelected}
-                  onSave={saveRecord}
-                  aiEnabled={mode === "database" && aiReady}
-                  notify={setNotice}
-                />
+              {screen === "AI Enquiry Processor" && !creating && (
+                <>
+                  <ProcessorSelector
+                    reviewFilter={reviewFilter}
+                    onFilterChange={chooseReviewFilter}
+                    rows={processorRows}
+                    selected={processorActive?.id ?? 0}
+                    onSelect={setSelected}
+                  />
+                  {processorActive ? (
+                    <Processor
+                      key={`${processorActive.id}:${processorActive.version}`}
+                      record={processorActive}
+                      onSave={saveFromProcessor}
+                      aiEnabled={mode === "database" && aiReady}
+                      notify={setNotice}
+                    />
+                  ) : (
+                    <section className="panel empty processor-empty" aria-live="polite">
+                      <CheckCircle2 size={27} />
+                      <h3>
+                        {reviewFilter === "Pending"
+                          ? "All caught up! There are no pending enquiries to review."
+                          : "No reviewed enquiries yet."}
+                      </h3>
+                      <p>
+                        {reviewFilter === "Pending"
+                          ? "Choose Reviewed to revisit saved enquiries, or add a new enquiry."
+                          : "Choose Pending to review an enquiry."}
+                      </p>
+                    </section>
+                  )}
+                </>
               )}
               {screen === "Enquiry List" && (
                 <section className="panel list-panel">
@@ -1374,17 +1441,83 @@ function RecordForm({
     </form>
   );
 }
+function ProcessorSelector({
+  reviewFilter,
+  onFilterChange,
+  rows,
+  selected,
+  onSelect,
+}: {
+  reviewFilter: "Pending" | "Reviewed";
+  onFilterChange: (value: "Pending" | "Reviewed") => void;
+  rows: Enquiry[];
+  selected: number;
+  onSelect: (id: number) => void;
+}) {
+  const position = rows.findIndex((r) => r.id === selected);
+  return (
+    <div className="processor-toolbar">
+      <div className="processor-select">
+        <span className="tiny-label">CURRENT ENQUIRY</span>
+        <label className="processor-selector-field">
+          <span>Review status</span>
+          <select
+            aria-label="Filter enquiries by review status"
+            value={reviewFilter}
+            onChange={(e) => onFilterChange(e.target.value as "Pending" | "Reviewed")}
+          >
+            <option value="Pending">Pending</option>
+            <option value="Reviewed">Reviewed</option>
+          </select>
+          <ChevronDown size={15} />
+        </label>
+        <label className="processor-selector-field processor-enquiry-field">
+          <span>Select enquiry</span>
+          <select
+            aria-label="Choose enquiry"
+            value={position >= 0 ? selected : ""}
+            disabled={!rows.length}
+            onChange={(e) => onSelect(Number(e.target.value))}
+          >
+            {!rows.length && <option value="">No {reviewFilter.toLowerCase()} enquiries</option>}
+            {rows.map((r) => (
+              <option value={r.id} key={r.id}>
+                #{String(r.id).padStart(2, "0")} · {shortName(r.name)}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={15} />
+        </label>
+      </div>
+      <div className="processor-counter">
+        <span>{rows.length ? `${position + 1} of ${rows.length}` : "0 of 0"}</span>
+        <button
+          className="icon-button"
+          aria-label="Previous enquiry"
+          disabled={position <= 0}
+          onClick={() => onSelect(rows[position - 1].id)}
+        >
+          <ChevronLeft size={17} />
+        </button>
+        <button
+          className="icon-button"
+          aria-label="Next enquiry"
+          disabled={position < 0 || position >= rows.length - 1}
+          onClick={() => onSelect(rows[position + 1].id)}
+        >
+          <ChevronRight size={17} />
+        </button>
+      </div>
+    </div>
+  );
+}
 function Processor({
   record,
-  rows,
-  onSelect,
   onSave,
   aiEnabled,
   notify,
 }: {
   record: Enquiry;
-  rows: Enquiry[];
-  onSelect: (id: number) => void;
   onSave: (v: SaveInput) => Promise<Enquiry>;
   aiEnabled: boolean;
   notify: (s: string) => void;
@@ -1403,7 +1536,6 @@ function Processor({
   const [provenance, setProvenance] = useState<
     NonNullable<SaveInput["provenance"]>
   >({});
-  const position = rows.findIndex((r) => r.id === record.id);
   const message = sourceMode === "official" ? record.message : pasted;
   const field = (k: keyof Editable, v: unknown) => {
     setDraft((d) => ({ ...d, [k]: v }));
@@ -1505,44 +1637,6 @@ function Processor({
   }
   return (
     <>
-      <div className="processor-toolbar">
-        <div className="processor-select">
-          <span className="tiny-label">CURRENT ENQUIRY</span>
-          <select
-            aria-label="Choose enquiry"
-            value={record.id}
-            onChange={(e) => onSelect(Number(e.target.value))}
-          >
-            {rows.map((r) => (
-              <option value={r.id} key={r.id}>
-                #{String(r.id).padStart(2, "0")} · {shortName(r.name)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={15} />
-        </div>
-        <div className="processor-counter">
-          <span>
-            {position + 1} of {rows.length}
-          </span>
-          <button
-            className="icon-button"
-            aria-label="Previous enquiry"
-            disabled={position <= 0}
-            onClick={() => onSelect(rows[position - 1].id)}
-          >
-            <ChevronLeft size={17} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label="Next enquiry"
-            disabled={position === rows.length - 1}
-            onClick={() => onSelect(rows[position + 1].id)}
-          >
-            <ChevronRight size={17} />
-          </button>
-        </div>
-      </div>
       <div className="processor-grid">
         <section className="message-panel panel">
           <div className="panel-header">
