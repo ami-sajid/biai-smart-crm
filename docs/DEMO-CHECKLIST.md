@@ -11,8 +11,8 @@ Before recording, deploy to Vercel and configure Neon + Gemini. Keep secrets out
 
 Live checklist:
 - [ ] Open the Vercel URL on desktop and a phone; verify navigation and layouts.
-- [ ] Sign in with reviewer code; reject an incorrect code.
-- [ ] Confirm edits remain after refresh and in a second authenticated browser.
+- [ ] Open the CRM in an incognito browser without a password; check that it loads correctly.
+- [ ] Confirm edits remain after refresh and are visible in a second public browser.
 - [ ] Try simultaneous edits and confirm stale changes are rejected.
 - [ ] Run all 20 messages through real Gemini and manually evaluate classification, identity and replies.
 - [ ] Check English, Bangla and Banglish replies, spam suppression and uncertainty flags.

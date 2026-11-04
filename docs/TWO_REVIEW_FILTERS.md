@@ -34,4 +34,4 @@ npm run typecheck
 npm run build
 npm run dev
 ```
-Use a Node.js version compatible with the locked dependencies (Node 24.15+ recommended). Test Pending → Reviewed → Pending on your authenticated Vercel demo, then push the changes to the GitHub production branch. Do not commit `.env.local`.
+Use a Node.js version compatible with the locked dependencies (Node 24.15+ recommended). Test Pending → Reviewed → Pending on your public Vercel demo, then push the changes to the GitHub production branch. Do not commit `.env.local`.

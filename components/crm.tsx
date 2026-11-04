@@ -24,7 +24,6 @@ import {
   Globe,
   ShieldCheck,
   Clock,
-  LogOut,
   Menu,
   X,
   SlidersHorizontal,
@@ -165,12 +164,9 @@ export default function CRM() {
   const [screen, setScreen] = useState<Screen>("Dashboard"),
     [allRows, setRows] = useState<Enquiry[]>([]),
     [mode, setMode] = useState<"loading" | "demo" | "database">("loading"),
-    [auth, setAuth] = useState(false),
     [aiReady, setAiReady] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
-    [code, setCode] = useState(""),
-    [busy, setBusy] = useState(false),
     [mobile, setMobile] = useState(false),
     [help, setHelp] = useState(false);
   const [creating, setCreating] = useState(false),
@@ -212,7 +208,6 @@ export default function CRM() {
     try {
       const s = await api("/api/session");
       setMode(s.mode);
-      setAuth(s.authenticated);
       setAiReady(s.ai);
       if (s.mode === "demo") {
         let data = seed();
@@ -241,7 +236,7 @@ export default function CRM() {
           );
         }
         setRows(data);
-      } else if (s.authenticated) setRows((await api("/api/crm")).rows);
+      } else if (s.mode === "database") setRows((await api("/api/crm")).rows);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -312,23 +307,6 @@ export default function CRM() {
     const t = setTimeout(() => setNotice(""), 6000);
     return () => clearTimeout(t);
   }, [notice]);
-  async function login(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api("/api/session", {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      });
-      setCode("");
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
   async function saveRecord(input: SaveInput) {
     let updated: Enquiry;
     if (mode === "demo") {
@@ -439,7 +417,7 @@ export default function CRM() {
         identityApproved: false,
         followUp: false,
       });
-      // Mark the card only after the authenticated save succeeds.
+      // Mark the card only after the server confirms a successful save.
       setRecentMove(id);
       if (settleTimer.current) clearTimeout(settleTimer.current);
       settleTimer.current = setTimeout(() => setRecentMove(null), 280);
@@ -543,23 +521,10 @@ export default function CRM() {
             <ArrowUpRight size={14} />
           </button>
           <div className="profile">
-            <Avatar name="BIAI Reviewer" />
+            <Avatar name="BIAI Demo" />
             <div>
-              Reviewer<small>BIAI team</small>
+              Public demo<small>BIAI sample workspace</small>
             </div>
-            {auth && (
-              <button
-                className="icon-button"
-                title="Sign out"
-                onClick={async () => {
-                  await api("/api/session", { method: "DELETE" });
-                  setAuth(false);
-                  setRows([]);
-                }}
-              >
-                <LogOut size={16} />
-              </button>
-            )}
             <span className="online-dot" />
           </div>
         </div>
@@ -588,11 +553,11 @@ export default function CRM() {
                   : "Connecting"}
             </span>
             <span className="top-divider" />
-            <Avatar name="BIAI Reviewer" />
+            <Avatar name="BIAI Demo" />
           </div>
         </header>
         <div className="content">
-          {auth && mode === "database" && (
+          {mode === "database" && (
             <div className="creation-toolbar">
               <Select
                 label="Dataset view"
@@ -701,34 +666,6 @@ export default function CRM() {
               <Loader2 className="spin" />
               <h3>Opening your workspace…</h3>
             </div>
-          )}
-          {mode === "database" && !auth && (
-            <form className="login-card" onSubmit={login}>
-              <span className="sparkle-box">
-                <ShieldCheck />
-              </span>
-              <h2>Welcome to BIAI</h2>
-              <p>
-                Enter your reviewer access code to open the shared workspace.
-              </p>
-              <label className="field">
-                <span>Access code</span>
-                <input
-                  autoComplete="current-password"
-                  type="password"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                />
-              </label>
-              <button className="primary" disabled={busy}>
-                {busy ? (
-                  <Loader2 className="spin" size={16} />
-                ) : (
-                  <ArrowRight size={16} />
-                )}
-                Open workspace
-              </button>
-            </form>
           )}
           {!!rows.length && (
             <div className="screen-motion">

@@ -525,20 +525,26 @@ test("theme toggle persists through navigation and remount; unwanted sidebar car
   assert.equal(localStorage.getItem("biai-theme"), "light");
 });
 
-test("login screen supports theme selection and storage errors do not break the toggle", async () => {
+test("public workspace opens without login and theme toggle tolerates blocked storage", async () => {
   document.documentElement.dataset.theme = "dark";
-  globalThis.fetch = async () => Response.json({mode:"database", authenticated:false, ai:false});
+  globalThis.fetch = async (url) => Response.json(
+    String(url).endsWith("/session")
+      ? { mode: "database", ai: false }
+      : { rows: seed() },
+  );
   render(React.createElement(CRM));
-  await screen.findByRole("button", {name:"Open workspace"});
-  const toggle=screen.getByRole("switch", {name:"Dark mode"});
-  await waitFor(()=>assert.equal(toggle.getAttribute("aria-checked"),"true"));
-  const original=dom.window.Storage.prototype.setItem;
+  await screen.findByText("Total enquiries");
+  assert.equal(screen.queryByText("Access code"), null);
+  assert.equal(screen.queryByRole("button", {name:"Open workspace"}), null);
+  const toggle = screen.getByRole("switch", { name: "Dark mode" });
+  await waitFor(() => assert.equal(toggle.getAttribute("aria-checked"), "true"));
+  const original = dom.window.Storage.prototype.setItem;
   try {
-    dom.window.Storage.prototype.setItem=()=>{throw new Error("Blocked storage")};
+    dom.window.Storage.prototype.setItem = () => { throw new Error("Blocked storage"); };
     fireEvent.click(toggle);
-    assert.equal(document.documentElement.dataset.theme,"light");
-    assert.equal(toggle.getAttribute("aria-checked"),"false");
-  } finally {dom.window.Storage.prototype.setItem=original;}
+    assert.equal(document.documentElement.dataset.theme, "light");
+    assert.equal(toggle.getAttribute("aria-checked"), "false");
+  } finally { dom.window.Storage.prototype.setItem = original; }
 });
 
 

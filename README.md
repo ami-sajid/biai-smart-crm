@@ -1,11 +1,11 @@
 # BIAI Smart CRM — Next.js / Vercel edition
 
-A working Next.js CRM inspired by the supplied UI references: a quiet sidebar, split conversation/review workspace, filterable contact table, and five-column sales pipeline. This is the Vercel edition explicitly requested by the project owner. The original Python application is preserved separately at `../original-streamlit/BIAI-AI-Powered-CRM/`.
+A working Next.js CRM inspired by the supplied UI references: a quiet sidebar, split conversation/review workspace, filterable contact table, and five-column sales pipeline. This is the Vercel edition explicitly requested by the project owner.
 
 ## Start on Windows
 
 1. Install Node.js 22 or 24 from https://nodejs.org/ (Node.js, not Python).
-2. Open this **web** folder in VS Code.
+2. Open this repository folder in VS Code.
 3. Open Terminal and run:
 
 ```powershell
@@ -21,12 +21,12 @@ No environment variables are needed for the manual local demo. It starts with al
 
 1. Extract the entire project and create a GitHub repository using GitHub Desktop. Do not commit `.env.local`, `node_modules`, `.next`, API keys or database credentials.
 2. In Vercel, import the repository.
-3. Choose **Next.js** and set **Root Directory to `web`** (the folder containing this package.json). If you upload only the contents of `web` to the repository, use `.` instead.
+3. Choose **Next.js** and set **Root Directory to `.`** (package.json is at repository root). If you upload only the contents of `web` to the repository, use `.` instead.
 4. Use Node.js **22.x**, install command `npm ci`, build command `npm run build`, and the default output directory.
 5. Deploy. With no environment variables, this runs as a browser-local manual demonstration.
 6. For shared saves and AI, add the variables below in Vercel project **Settings → Environment Variables**, then redeploy. Apply them to the deployment environments you use.
 
-This package has not been deployed to your Vercel account. No hosted URL is claimed.
+Production deployment is connected separately through GitHub and Vercel. Verify the current public URL after every release.
 
 ## Shared database and Gemini
 
@@ -35,15 +35,14 @@ For local use, copy `.env.example` to `.env.local`. For Vercel, enter values in 
 | Variable | Value / purpose |
 | --- | --- |
 | `DATABASE_URL` | A Neon pooled PostgreSQL connection string with `sslmode=require`. Use a dedicated demo database/branch. |
-| `REVIEWER_ACCESS_CODE` | A random access code of at least 16 characters, required when a database is configured. Share privately with reviewers. |
 | `GEMINI_API_KEY` | Your Gemini API key. Used on the server only. |
 | `GEMINI_MODEL` | An exact text model ID available to your AI Studio project. No model ID is assumed. |
 | `GEMINI_TIMEOUT_MS` | Optional; default 120000, bounded to 10000–120000 ms. |
 | `AI_DAILY_LIMIT` | Optional; default 40 total requests per Dhaka calendar day. Set 0 to disable AI requests. Failed attempts also count. |
 
-The database user needs permission to create and alter the `biai_web_*` tables, create indexes, and create/use the `biai_manual_id` sequence. On the first authenticated load, the server creates these tables and imports the 20 original enquiries. Repeated loads never overwrite staff edits. The web edition uses separate tables; it does **not** automatically migrate existing Streamlit `crm.db` edits. Keep the old database as a backup.
+The database user needs permission to create and alter the `biai_web_*` tables, create indexes, and create/use the `biai_manual_id` sequence. On the first public load, the server creates these tables and imports the 20 original enquiries. Repeated loads never overwrite staff edits. The web edition uses separate tables; it does **not** automatically migrate existing Streamlit `crm.db` edits. Keep the old database as a backup.
 
-If you configure DATABASE_URL without a valid reviewer code, the app fails closed with a setup message. The reviewer session expires after eight hours. Fifty login attempts are allowed per ten-minute window across the deployment; this is a small shared demo access gate, not an enterprise identity system.
+The demo is publicly accessible without a password. All visitors can view and edit the same enquiry records and use the shared Gemini request budget. Use a dedicated Neon demo database/branch with fictional data only. Do not connect it to production customer data. Existing payment verification, field validation and AI request limits remain; they are business safeguards, not access control. To restrict public editing or API usage later, add authentication or a read-only public demo mode.
 
 ## What works
 
@@ -52,12 +51,12 @@ If you configure DATABASE_URL without a valid reviewer code, the app fails close
 - Manual editing works without AI. Original contact metadata remains the default. Name/phone changes require explicit approval.
 - Enquiry list: text search, type tabs, programme and stage filters, pagination, detail panel, CSV export with spreadsheet-formula escaping.
 - Pipeline: New → Contacted → Interested → Paid / Lost. Sales-only default; All enquiries option. Open a card to change its stage. A payment claim is never treated as verified payment.
-- Server validation, optimistic concurrency, idempotent imports/saves, database audit events, shared daily AI cap, protected API routes.
+- Server validation, optimistic concurrency, idempotent imports/saves, database audit events, shared daily AI cap, same-origin checked API routes (public access).
 - Responsive CSS, keyboard focus indicators, labeled controls, Escape-to-close and focus containment in dialogs.
 
 Only Sales records appear in the sales pipeline by default. All supplied records initially remain **New / Unclassified**, so an empty Sales pipeline is intentional. Review/classify one first, or choose All enquiries. No prices, revenues, deadlines, fake staff assignments or invented customer messages are added.
 
-For a new customer, use **+ New Enquiry** in the authenticated database workspace. Choose WhatsApp, Facebook, Website or Phone Call, paste the message, analyze with AI, review/edit the fields and select **Save New Enquiry**. Missing names and phones stay empty. Staff can also save without AI. The record receives a PostgreSQL-generated ID, Manual Entry origin and New stage. A unique request key makes repeat submissions idempotent; after a failed/uncertain save, retry the retained submission.
+For a new customer, use **+ New Enquiry** in the public database workspace. Choose WhatsApp, Facebook, Website or Phone Call, paste the message, analyze with AI, review/edit the fields and select **Save New Enquiry**. Missing names and phones stay empty. Staff can also save without AI. The record receives a PostgreSQL-generated ID, Manual Entry origin and New stage. A unique request key makes repeat submissions idempotent; after a failed/uncertain save, retry the retained submission.
 
 The dataset selector defaults to **Official dataset** for assessments. **All enquiries** and **Manual entries** include staff-created records; creating a record switches to All enquiries. The browser-only demo remains the official 20 records and does not simulate database creation. No test fixtures are seeded into the app.
 
@@ -106,6 +105,6 @@ New enquiries still start at New. Their AI suggestion is saved with the reviewed
 
 ## Light and Dark Mode
 
-Use the Light Mode / Dark Mode switch near the bottom of the sidebar, above Workspace guide. Light remains the default. Your choice is saved locally in this browser and restored before the page renders on refresh. The same theme applies to login, all CRM screens, forms and dialogs. Blocked browser storage does not prevent switching themes, but persistence requires localStorage access.
+Use the Light Mode / Dark Mode switch near the bottom of the sidebar, above Workspace guide. Light remains the default. Your choice is saved locally in this browser and restored before the page renders on refresh. The same theme applies to the public Dashboard, all CRM screens, forms and dialogs. Blocked browser storage does not prevent switching themes, but persistence requires localStorage access.
 
 The decorative workspace card and sidebar AI promotional card have been removed. All CRM features and backend configuration remain unchanged. No new application dependencies or migration are required.
